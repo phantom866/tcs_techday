@@ -25,7 +25,7 @@ export default function Home() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const [activeFileName, setActiveFileName] = useState<string | undefined>(undefined);
-  const [activeFileType, setActiveFileType] = useState<'txt' | 'csv' | 'pasted'>('pasted');
+  const [activeFileType, setActiveFileType] = useState<'txt' | 'csv' | 'pdf' | 'docx' | 'pasted'>('pasted');
 
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState<boolean>(false);
@@ -35,7 +35,7 @@ export default function Home() {
     inputText: string,
     currentRules: RedactionRules,
     fileName?: string,
-    fileType?: 'txt' | 'csv' | 'pasted'
+    fileType?: 'txt' | 'csv' | 'pdf' | 'docx' | 'pasted'
   ) => {
     // 1. Edge Case: Empty or whitespace input
     if (!inputText || inputText.trim() === '') {
@@ -144,7 +144,7 @@ export default function Home() {
     }
   };
 
-  const handleFileLoaded = (name: string, type: 'txt' | 'csv', content: string) => {
+  const handleFileLoaded = (name: string, type: 'txt' | 'csv' | 'pdf' | 'docx', content: string) => {
     setText(content);
     setActiveFileName(name);
     setActiveFileType(type);

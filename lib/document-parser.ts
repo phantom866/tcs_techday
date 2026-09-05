@@ -18,7 +18,6 @@ export async function parsePdfFile(file: File): Promise<string> {
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(arrayBuffer),
       useSystemFonts: true,
-      isEvalSupported: false,
     });
 
     const pdf = await loadingTask.promise;
