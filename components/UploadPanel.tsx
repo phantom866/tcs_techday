@@ -5,15 +5,20 @@ import {
   UploadCloud,
   FileText,
   FileSpreadsheet,
+  FileType,
   AlertCircle,
   Play,
   RotateCcw,
   Sparkles,
   ClipboardPaste,
   Check,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
-import { DEMO_SAMPLES, DEFAULT_DEMO_TEXT, DemoSample } from '@/lib/demo-data';
+import { DEMO_SAMPLES, DemoSample } from '@/lib/demo-data';
+import { parsePdfFile, parseDocxFile } from '@/lib/document-parser';
+
+export type SupportedFileType = 'txt' | 'csv' | 'pdf' | 'docx' | 'pasted';
 
 interface UploadPanelProps {
   text: string;
@@ -21,8 +26,8 @@ interface UploadPanelProps {
   onScan: () => void;
   isScanning: boolean;
   activeFileName?: string;
-  activeFileType?: 'txt' | 'csv' | 'pasted';
-  onFileLoaded: (name: string, type: 'txt' | 'csv', content: string) => void;
+  activeFileType?: SupportedFileType;
+  onFileLoaded: (name: string, type: 'txt' | 'csv' | 'pdf' | 'docx', content: string) => void;
   onClear: () => void;
   errorMessage: string | null;
   setErrorMessage: (msg: string | null) => void;
@@ -42,6 +47,8 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [showDemoMenu, setShowDemoMenu] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractingStatus, setExtractingStatus] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -54,20 +61,55 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
     setIsDragging(false);
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setErrorMessage(null);
     const extension = file.name.split('.').pop()?.toLowerCase();
 
-    if (extension !== 'txt' && extension !== 'csv') {
-      setErrorMessage('File type not supported. Please upload a TXT or CSV file.');
+    if (!extension || !['txt', 'csv', 'pdf', 'docx'].includes(extension)) {
+      setErrorMessage('File type not supported. Please upload a .txt, .csv, .pdf, or .docx file.');
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setErrorMessage('File is too large for browser demo (maximum 2MB).');
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMessage('File is too large for demonstration (maximum 10MB).');
       return;
     }
 
+    if (extension === 'pdf') {
+      try {
+        setIsExtracting(true);
+        setExtractingStatus(`Parsing PDF: ${file.name}...`);
+        const content = await parsePdfFile(file);
+        onFileLoaded(file.name, 'pdf', content);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to extract text from PDF.';
+        setErrorMessage(message);
+      } finally {
+        setIsExtracting(false);
+        setExtractingStatus('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    if (extension === 'docx') {
+      try {
+        setIsExtracting(true);
+        setExtractingStatus(`Extracting Word document: ${file.name}...`);
+        const content = await parseDocxFile(file);
+        onFileLoaded(file.name, 'docx', content);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to read Word document.';
+        setErrorMessage(message);
+      } finally {
+        setIsExtracting(false);
+        setExtractingStatus('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    // Handle .txt and .csv files via FileReader
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
@@ -76,9 +118,11 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
         return;
       }
       onFileLoaded(file.name, extension as 'txt' | 'csv', content);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.onerror = () => {
       setErrorMessage('Failed to read file. Please ensure it is a valid text file.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
   };
@@ -122,9 +166,11 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
             <h2 className="text-sm font-semibold text-white">Input Document & Text</h2>
             <p className="text-xs text-slate-400">
               {activeFileName ? (
-                <span className="text-cyan-400 font-mono">Loaded: {activeFileName}</span>
+                <span className="text-cyan-400 font-mono">
+                  Loaded: {activeFileName} {activeFileType ? `(${activeFileType.toUpperCase()})` : ''}
+                </span>
               ) : (
-                'Paste text or upload .TXT / .CSV'
+                'Paste text or upload .TXT / .CSV / .PDF / .DOCX'
               )}
             </p>
           </div>
@@ -186,33 +232,56 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => !isExtracting && fileInputRef.current?.click()}
         className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all mb-3 ${
           isDragging
             ? 'border-cyan-400 bg-cyan-950/20'
+            : isExtracting
+            ? 'border-indigo-500/50 bg-indigo-950/10 cursor-wait'
             : 'border-slate-800 hover:border-slate-700 bg-slate-950/40'
         }`}
       >
         <input
           ref={fileInputRef}
           type="file"
-          accept=".txt,.csv"
+          accept=".txt,.csv,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv"
           onChange={handleFileInputChange}
           className="hidden"
+          disabled={isExtracting}
         />
         <div className="flex items-center justify-center space-x-3">
-          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
-            <UploadCloud className="w-5 h-5" />
+          <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
+            {isExtracting ? (
+              <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+            ) : (
+              <UploadCloud className="w-5 h-5" />
+            )}
           </div>
           <div className="text-left">
-            <div className="text-xs font-medium text-slate-200">
-              Drag & drop a <span className="text-cyan-400 font-semibold">.txt</span> or{' '}
-              <span className="text-cyan-400 font-semibold">.csv</span> file, or{' '}
-              <span className="underline text-blue-400">browse</span>
-            </div>
-            <div className="text-[11px] text-slate-500">
-              Files are processed 100% locally in browser memory
-            </div>
+            {isExtracting ? (
+              <div>
+                <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+                  <span>{extractingStatus}</span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Extracting text client-side in browser memory...
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="text-xs font-medium text-slate-200">
+                  Drag & drop a{' '}
+                  <span className="text-cyan-400 font-semibold">.txt</span>,{' '}
+                  <span className="text-cyan-400 font-semibold">.csv</span>,{' '}
+                  <span className="text-cyan-400 font-semibold">.pdf</span>, or{' '}
+                  <span className="text-cyan-400 font-semibold">.docx</span> file, or{' '}
+                  <span className="underline text-blue-400">browse</span>
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Supports TXT, CSV, PDF, and DOCX (up to 10MB) • 100% local browser execution
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -225,7 +294,7 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
             onTextChange(e.target.value);
             if (errorMessage) setErrorMessage(null);
           }}
-          placeholder="Paste document text here, or click 'Load Demo Data' above..."
+          placeholder="Paste document text here, upload a .txt / .csv / .pdf / .docx file, or click 'Load Demo Data' above..."
           className="w-full flex-1 p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 text-slate-100 font-mono text-xs leading-relaxed focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 resize-y"
           rows={9}
         />
@@ -254,7 +323,7 @@ export const UploadPanel: React.FC<UploadPanelProps> = ({
       <div className="pt-4 border-t border-slate-800/80 mt-3">
         <button
           onClick={onScan}
-          disabled={isScanning}
+          disabled={isScanning || isExtracting}
           className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-slate-950 font-bold text-sm tracking-wide flex items-center justify-center space-x-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50"
         >
           {isScanning ? (

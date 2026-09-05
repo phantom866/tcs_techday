@@ -33,7 +33,7 @@ export interface ScanResult {
     characterCount: number;
   };
   fileName?: string;
-  fileType?: 'txt' | 'csv' | 'pasted';
+  fileType?: 'txt' | 'csv' | 'pdf' | 'docx' | 'pasted';
   timestamp: string;
 }
 
